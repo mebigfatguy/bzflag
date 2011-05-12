@@ -1,0 +1,13 @@
+localport = 1234
+ldap_master_addr = ldap://127.0.0.1
+ldap_suffix = dc=my-domain,dc=com
+ldap_rootdn = cn=Manager,dc=my-domain,dc=com
+ldap_password = secret
+token_expire_delay = 300000
+reg_period = 300
+http_port = 88
+web_server_name = my.bzflag.org
+web_script_name = /bb/profile.php
+callsign_regex = ^[][[:alnum:] +_-]{2,20}$
+password_regex = ^[[:print:]]{3,255}$
+email_regex = ^[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,4}$
