@@ -1,0 +1,34 @@
+<library>
+
+  <shaders>
+    <shader><file>/shader/std_lighting_fixed.xml</file></shader>
+  </shaders>
+
+  <textures>
+    <texture name="arrow">
+      <file>menu_arrow.png</file>
+      <for2d>True</for2d>
+      <for3d>False</for3d>
+      <mipmap>False</mipmap>
+    </texture>
+    <texture name="grass">
+      <file>std_ground.png</file>
+    </texture>
+    <texture name="plain.nor">
+      <file>plain_nor.png</file>
+      <class>normalmap</class>
+    </texture>
+  </textures>
+
+  <materials>
+    <material name="grass">
+      <shader type="pvl">std_lighting_fixed</shader>
+      <shadervar name="tex diffuse" type="texture">grass</shadervar>
+    </material>
+    <material name="sky">
+      <shader type="pvl">std_lighting_fixed</shader>
+      <color red="0.2" green="0.5" blue="1.0"/>
+    </material>
+  </materials>
+
+</library>

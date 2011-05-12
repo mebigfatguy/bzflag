@@ -1,0 +1,22 @@
+if CLIENT_INCLUDED
+noinst_LTLIBRARIES = libMediaFile.la
+endif
+
+MAINTAINERCLEANFILES = \
+	Makefile.in
+
+AM_CPPFLAGS = -I$(top_srcdir)/include
+AM_CXXFLAGS = @CRYSTAL_CFLAGS@
+
+libMediaFile_la_LDFLAGS = -static
+libMediaFile_la_SOURCES =	\
+	MediaFile.cxx		\
+	AudioFile.cxx		\
+	AudioFile.h		\
+	WaveAudioFile.h		\
+	WaveAudioFile.cxx
+
+EXTRA_DIST = \
+	OggAudioFile.cxx	\
+	OggAudioFile.h		\
+	README
