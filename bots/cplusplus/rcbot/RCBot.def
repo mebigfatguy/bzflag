@@ -1,0 +1,4 @@
+LIBRARY RCBot
+EXPORTS
+ create
+ destroy
