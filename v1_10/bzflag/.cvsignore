@@ -1,0 +1,11 @@
+aclocal.m4
+bzflag.info
+bzflag.lsm
+bzflag.spec
+config.cache
+config.log
+config.status
+configure
+work
+*patch
+*diff

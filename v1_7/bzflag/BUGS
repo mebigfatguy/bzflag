@@ -1,0 +1,52 @@
+known bugs in BZFlag
+--------------------
+
+see the bug tracker on SourceForge for more 
+http://SourceForge.net/tracker/?group_id=3248&atid=103248
+
+* exploding tank parts sometimes move along the ground instead of
+   flying up into the air.
+
+* not dropping a flag grabbed just before being destroyed
+
+* same stipple on teleporters and phantom zone, making phatom
+   tank behind teleporter virtually invisible when blending is off.
+
+* hit detection on pyramids computed at altitude of ray origin
+
+* not drawing back to front when depth buffer is on:
+   flag edges can't be antialiased right
+   teleporter blended on top of shots in front of them
+
+* line stipple doesn't (can't) match polygon stipple
+   messes up shadow of flag stem
+
+* connection protocol is stupid
+   currently: connect/get hello/reconnect at new port/close 1st
+   should be: connect/get hello
+   can't fix without being incompatible
+
+* can sometimes appear in front of bad guys
+
+* some linux systems get XIO error on startup
+   no idea why but it's consistent on those systems
+   (probably XIJoystick code?)
+
+* not blanking screen during win32 startup
+   should black out screen before changing resolutions
+   should raise on top of task bar
+   also black out screen when quitting until resolution restored
+
+* error dialogs on win32 may appear off screen
+   only when display resolution was changed
+
+* collision problems
+   can sometimes get stuck on a pyramid or in a corner.  also
+   picking up the obese flag close to a building can cause you
+   to get stuck.
+
+* robots are just too stupid
+
+* robots can sometimes go through buildings
+   the code to generate the cells of open space are susceptible
+   to roundoff error, causing an open cell inside a building.

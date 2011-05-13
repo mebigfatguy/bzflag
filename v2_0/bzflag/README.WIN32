@@ -1,0 +1,76 @@
+README for Win32 platforms
+--------------------------
+
+BZFlag uses Microsoft Visual C++ for its prebuilt binary 
+releases (version 9 aka ".NET 2008"). Both the full and
+"express" editions are supported.
+
+It is also possible to build on Win32 using MinGW/MSYS or
+Cygwin, both of which use a unix-like make file system; 
+for details, see README.MINGW32 (for MinGW)or the main 
+README (for Cygwin).
+
+So, to build bzflag on Win32, get Visual C++ or something
+that can read Visual C++ projects and workspaces.  Then:
+
+Configure your executables in the Tools/Options/Directory menu.
+Click the Executables tab, and add the directory where the NSIS
+installer builder is found.
+
+You also need to have libCurl installed.
+Download it from http://curl.haxx.se/libcurl/
+It is best if you do not get the SSL versions. Bzflag does not
+need or use SSL, and the SSL versions of libCurl have additional
+library dependencies that need to be meet. If you are not building
+your own copy of libCurl and want to use one of the premade
+binary distrobutions then you should download the one that is
+made for "MSVC". You should note that the binary versions
+of libCurl may link to a zlib dll that you will have to aquire
+as well.
+
+The simplest way to get libCurl and glew are to get the source
+tree for the trunk version of BZFlag and build it. This will
+produce the libcurl.lib and dll files in
+bzflag\MSVC\build\libcurl_release(or libcurl_debug). Take the
+lib file and place it in the VC9 folder for 2.0.x, and the dll.
+into the root level of the 2.0.x source code folder.
+Also place the curl folder from /src/other/curl/include into
+the VC9. Finaly if you wish to build with glew, open
+/src/other/glew/build/vc6/glew.sln file and build. This will
+produce a glew32.lib file in /src/other/glew/build/lib. Copy
+this file to the VC9 folder, as well as the GL folder from 
+glew's include folder. Finaly place the glew32.dll from the bin
+folder into the root level of the 2.0.x source tree.
+
+Add the include directory and the lib to your visual c++
+configuration.  See the SDL section at the end of the file for
+details.
+
+If you wish to build bzAdmin you may also want to get PDCurses.
+
+The installer is the bzflag executable in the dist folder.
+
+If you are using Visual C++ 2008 EXPRESS edition, you will need to install
+a number of extra things before you can build. BZFlag will not build with 
+VC express editions "out of the box".
+Also note that the VC9 project will not convert the man pages
+into HTML automatically.
+
+You will need the windows platform SDK
+  (instructions http://msdn.microsoft.com/vstudio/express/visualc/usingpsdk/default.aspx)
+You will need the windows DirectX SDK
+  (instructions at http://msdn.microsoft.com/directx/sdk/readmepage/default.aspx)
+You will need to also install libCURL and curses (see above).
+Use the VC9 projects in the win32 directory.
+
+If you want to build with SDL (not recommended):
+Choose the Lib tab, and add SDLMain.lib and SDL.lib. These can be
+downloaded from libsdl.org. Also add the SDL include directory
+to the Includes tab.  Next copy SDL.dll to the directory
+that bzflag is running from, e.g. src/bzflag/SDL_Release or
+src/bzflag/SDL_Debug.
+When you want to build, set the active configuration to
+"BZFlag - Win32 SDL_Release" or "BZFlag - Win32 SDL_Debug"
+instead of the normal Win32 Release/Debug targets.
+note the standard builds are not done with SDL, as SDL
+does not provide all the same features as the native platform.
