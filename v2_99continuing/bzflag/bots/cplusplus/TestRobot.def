@@ -1,0 +1,4 @@
+LIBRARY TestRobot
+EXPORTS
+ create
+ destroy
