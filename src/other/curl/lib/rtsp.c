@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -28,6 +28,7 @@
 #include <curl/curl.h>
 #include "transfer.h"
 #include "sendf.h"
+#include "easyif.h" /* for Curl_convert_... prototypes */
 #include "multiif.h"
 #include "http.h"
 #include "url.h"
@@ -35,8 +36,6 @@
 #include "rtsp.h"
 #include "rawstr.h"
 #include "curl_memory.h"
-#include "select.h"
-#include "connect.h"
 
 #define _MPRINTF_REPLACE /* use our functions only */
 #include <curl/mprintf.h>
@@ -97,42 +96,8 @@ const struct Curl_handler Curl_handler_rtsp = {
   ZERO_NULL,                            /* perform_getsock */
   Curl_rtsp_disconnect,                 /* disconnect */
   PORT_RTSP,                            /* defport */
-  CURLPROTO_RTSP,                       /* protocol */
-  PROTOPT_NONE                          /* flags */
+  PROT_RTSP,                            /* protocol */
 };
-
-/*
- * The server may send us RTP data at any point, and RTSPREQ_RECEIVE does not
- * want to block the application forever while receiving a stream. Therefore,
- * we cannot assume that an RTSP socket is dead just because it is readable.
- *
- * Instead, if it is readable, run Curl_getconnectinfo() to peek at the socket
- * and distinguish between closed and data.
- */
-bool Curl_rtsp_connisdead(struct connectdata *check)
-{
-  int sval;
-  bool ret_val = TRUE;
-
-  sval = Curl_socket_ready(check->sock[FIRSTSOCKET], CURL_SOCKET_BAD, 0);
-  if(sval == 0) {
-    /* timeout */
-    ret_val = FALSE;
-  }
-  else if (sval & CURL_CSELECT_ERR) {
-    /* socket is in an error state */
-    ret_val = TRUE;
-  }
-  else if ((sval & CURL_CSELECT_IN) && check->data) {
-    /* readable with no error. could be closed or could be alive but we can
-       only check if we have a proper SessionHandle for the connection */
-    curl_socket_t connectinfo = Curl_getconnectinfo(check->data, &check);
-    if(connectinfo != CURL_SOCKET_BAD)
-      ret_val = FALSE;
-  }
-
-  return ret_val;
-}
 
 CURLcode Curl_rtsp_connect(struct connectdata *conn, bool *done)
 {
@@ -152,9 +117,7 @@ CURLcode Curl_rtsp_connect(struct connectdata *conn, bool *done)
   return httpStatus;
 }
 
-CURLcode Curl_rtsp_disconnect(struct connectdata *conn, bool dead_connection)
-{
-  (void) dead_connection;
+CURLcode Curl_rtsp_disconnect(struct connectdata *conn) {
   Curl_safefree(conn->proto.rtspc.rtp_buf);
   return CURLE_OK;
 }
@@ -291,8 +254,8 @@ CURLcode Curl_rtsp(struct connectdata *conn, bool *done)
   }
 
   if(rtspreq == RTSPREQ_RECEIVE) {
-    Curl_setup_transfer(conn, FIRSTSOCKET, -1, TRUE,
-                        &http->readbytecount, -1, NULL);
+    result = Curl_setup_transfer(conn, FIRSTSOCKET, -1, TRUE,
+                                 &http->readbytecount, -1, NULL);
 
     return result;
   }
@@ -540,9 +503,15 @@ CURLcode Curl_rtsp(struct connectdata *conn, bool *done)
     return result;
   }
 
-  Curl_setup_transfer(conn, FIRSTSOCKET, -1, TRUE, &http->readbytecount,
-                      putsize?FIRSTSOCKET:-1,
-                      putsize?&http->writebytecount:NULL);
+  result = Curl_setup_transfer(conn, FIRSTSOCKET, -1, TRUE,
+                               &http->readbytecount,
+                               putsize?FIRSTSOCKET:-1,
+                               putsize?&http->writebytecount:NULL);
+
+  if(result) {
+    failf(data, "Failed RTSP transfer");
+    return result;
+  }
 
   /* Increment the CSeq on success */
   data->state.rtsp_next_client_CSeq++;
@@ -746,7 +715,7 @@ CURLcode Curl_rtsp_parseheader(struct connectdata *conn,
     while(*start && ISSPACE(*start))
       start++;
 
-    if(!*start) {
+    if(!start) {
       failf(data, "Got a blank Session ID");
     }
     else if(data->set.str[STRING_RTSP_SESSION_ID]) {

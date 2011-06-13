@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -32,7 +32,6 @@
 #include "speedcheck.h"
 #include "pingpong.h"
 #include "multiif.h"
-#include "non-ascii.h"
 
 #define _MPRINTF_REPLACE /* use our functions only */
 #include <curl/mprintf.h>
@@ -171,7 +170,7 @@ void Curl_pp_init(struct pingpong *pp)
 
 /***********************************************************************
  *
- * Curl_pp_vsendf()
+ * Curl_pp_sendfv()
  *
  * Send the formated string as a command to a pingpong server. Note that
  * the string should not have any CRLF appended, as this function will
@@ -209,18 +208,20 @@ CURLcode Curl_pp_vsendf(struct pingpong *pp,
 
   Curl_pp_init(pp);
 
+#ifdef CURL_DOES_CONVERSIONS
   res = Curl_convert_to_network(data, s, write_len);
   /* Curl_convert_to_network calls failf if unsuccessful */
-  if(res)
+  if(res != CURLE_OK) {
     return res;
+  }
+#endif /* CURL_DOES_CONVERSIONS */
 
 #if defined(HAVE_KRB4) || defined(HAVE_GSSAPI)
-  conn->data_prot = PROT_CMD;
+  conn->data_prot = prot_cmd;
 #endif
   res = Curl_write(conn, conn->sock[FIRSTSOCKET], sptr, write_len,
                    &bytes_written);
 #if defined(HAVE_KRB4) || defined(HAVE_GSSAPI)
-  DEBUGASSERT(data_sec > PROT_NONE && data_sec < PROT_LAST);
   conn->data_prot = data_sec;
 #endif
 
@@ -321,7 +322,7 @@ CURLcode Curl_pp_readresp(curl_socket_t sockfd,
        */
       DEBUGASSERT((ptr+pp->cache_size) <= (buf+BUFSIZE+1));
       memcpy(ptr, pp->cache, pp->cache_size);
-      gotbytes = (ssize_t)pp->cache_size;
+      gotbytes = pp->cache_size;
       free(pp->cache);    /* free the cache */
       pp->cache = NULL;   /* clear the pointer */
       pp->cache_size = 0; /* zero the size just in case */
@@ -330,22 +331,26 @@ CURLcode Curl_pp_readresp(curl_socket_t sockfd,
       int res;
 #if defined(HAVE_KRB4) || defined(HAVE_GSSAPI)
       enum protection_level prot = conn->data_prot;
-      conn->data_prot = PROT_CLEAR;
+
+      conn->data_prot = 0;
 #endif
       DEBUGASSERT((ptr+BUFSIZE-pp->nread_resp) <= (buf+BUFSIZE+1));
       res = Curl_read(conn, sockfd, ptr, BUFSIZE-pp->nread_resp,
                       &gotbytes);
 #if defined(HAVE_KRB4) || defined(HAVE_GSSAPI)
-      DEBUGASSERT(prot  > PROT_NONE && prot < PROT_LAST);
       conn->data_prot = prot;
 #endif
-      if(res == CURLE_AGAIN)
+      if(res < 0)
+        /* EWOULDBLOCK */
         return CURLE_OK; /* return */
 
-      if((res == CURLE_OK) && (gotbytes > 0))
+#ifdef CURL_DOES_CONVERSIONS
+      if((res == CURLE_OK) && (gotbytes > 0)) {
         /* convert from the network encoding */
         res = Curl_convert_from_network(data, ptr, gotbytes);
-      /* Curl_convert_from_network calls failf if unsuccessful */
+        /* Curl_convert_from_network calls failf if unsuccessful */
+      }
+#endif /* CURL_DOES_CONVERSIONS */
 
       if(CURLE_OK != res) {
         result = (CURLcode)res; /* Set outer result variable to this error. */
@@ -358,7 +363,7 @@ CURLcode Curl_pp_readresp(curl_socket_t sockfd,
     else if(gotbytes <= 0) {
       keepon = FALSE;
       result = CURLE_RECV_ERROR;
-      failf(data, "response reading failed");
+      failf(data, "FTP response reading failed");
     }
     else {
       /* we got a whole chunk of data, which can be anything from one
@@ -382,8 +387,8 @@ CURLcode Curl_pp_readresp(curl_socket_t sockfd,
           if(!conn->sec_complete)
 #endif
             if(data->set.verbose)
-              Curl_debug(data, CURLINFO_HEADER_IN,
-                         pp->linestart_resp, (size_t)perline, conn);
+            Curl_debug(data, CURLINFO_HEADER_IN,
+                       pp->linestart_resp, (size_t)perline, conn);
 
           /*
            * We pass all response-lines to the callback function registered

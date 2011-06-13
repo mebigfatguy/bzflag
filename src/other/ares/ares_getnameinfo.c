@@ -1,3 +1,4 @@
+/* $Id$ */
 
 /* Copyright 2005 by Dominick Meglio
  *
@@ -80,8 +81,7 @@ struct nameinfo_query {
         (sizeof("ffff:ffff:ffff:ffff:ffff:ffff:255.255.255.255"))
 #endif
 
-static void nameinfo_callback(void *arg, int status, int timeouts,
-                              struct hostent *host);
+static void nameinfo_callback(void *arg, int status, int timeouts, struct hostent *host);
 static char *lookup_service(unsigned short port, int flags,
                             char *buf, size_t buflen);
 #ifdef HAVE_SOCKADDR_IN6_SIN6_SCOPE_ID
@@ -99,15 +99,13 @@ void ares_getnameinfo(ares_channel channel, const struct sockaddr *sa,
   struct nameinfo_query *niquery;
   unsigned int port = 0;
 
-  /* Validate socket address family and length */
-  if ((sa->sa_family == AF_INET) &&
-      (salen == sizeof(struct sockaddr_in)))
+  /* Verify the buffer size */
+  if (salen == sizeof(struct sockaddr_in))
     {
       addr = (struct sockaddr_in *)sa;
       port = addr->sin_port;
     }
-  else if ((sa->sa_family == AF_INET6) &&
-           (salen == sizeof(struct sockaddr_in6)))
+  else if (salen == sizeof(struct sockaddr_in6))
     {
       addr6 = (struct sockaddr_in6 *)sa;
       port = addr6->sin6_port;
@@ -204,8 +202,7 @@ void ares_getnameinfo(ares_channel channel, const struct sockaddr *sa,
     }
 }
 
-static void nameinfo_callback(void *arg, int status, int timeouts,
-                              struct hostent *host)
+static void nameinfo_callback(void *arg, int status, int timeouts, struct hostent *host)
 {
   struct nameinfo_query *niquery = (struct nameinfo_query *) arg;
   char srvbuf[33];
@@ -224,8 +221,8 @@ static void nameinfo_callback(void *arg, int status, int timeouts,
             service = lookup_service(niquery->addr.addr6.sin6_port,
                                      niquery->flags, srvbuf, sizeof(srvbuf));
         }
-      /* NOFQDN means we have to strip off the domain name portion.  We do
-         this by determining our own domain name, then searching the string
+      /* NOFQDN means we have to strip off the domain name portion.
+         We do this by determining our own domain name, then searching the string
          for this domain name and removing it.
        */
 #ifdef HAVE_GETHOSTNAME
@@ -234,7 +231,7 @@ static void nameinfo_callback(void *arg, int status, int timeouts,
            char buf[255];
            char *domain;
            gethostname(buf, 255);
-           if ((domain = strchr(buf, '.')) != NULL)
+           if ((domain = strchr(buf, '.')))
              {
                char *end = ares_striendstr(host->h_name, domain);
                if (end)
@@ -242,10 +239,8 @@ static void nameinfo_callback(void *arg, int status, int timeouts,
              }
         }
 #endif
-      niquery->callback(niquery->arg, ARES_SUCCESS, niquery->timeouts,
-                        (char *)(host->h_name),
+      niquery->callback(niquery->arg, ARES_SUCCESS, niquery->timeouts, (char *)(host->h_name),
                         service);
-      free(niquery);
       return;
     }
   /* We couldn't find the host, but it's OK, we can use the IP */
@@ -253,15 +248,12 @@ static void nameinfo_callback(void *arg, int status, int timeouts,
     {
       char ipbuf[IPBUFSIZ];
       if (niquery->family == AF_INET)
-        ares_inet_ntop(AF_INET, &niquery->addr.addr4.sin_addr, ipbuf,
-                       IPBUFSIZ);
+        ares_inet_ntop(AF_INET, &niquery->addr.addr4.sin_addr, ipbuf, IPBUFSIZ);
       else
         {
-          ares_inet_ntop(AF_INET6, &niquery->addr.addr6.sin6_addr, ipbuf,
-                         IPBUFSIZ);
+          ares_inet_ntop(AF_INET6, &niquery->addr.addr6.sin6_addr, ipbuf, IPBUFSIZ);
 #ifdef HAVE_SOCKADDR_IN6_SIN6_SCOPE_ID
-          append_scopeid(&niquery->addr.addr6, niquery->flags, ipbuf,
-                         sizeof(ipbuf));
+          append_scopeid(&niquery->addr.addr6, niquery->flags, ipbuf, sizeof(ipbuf));
 #endif
         }
       /* They want a service too */
@@ -274,9 +266,7 @@ static void nameinfo_callback(void *arg, int status, int timeouts,
             service = lookup_service(niquery->addr.addr6.sin6_port,
                                      niquery->flags, srvbuf, sizeof(srvbuf));
         }
-      niquery->callback(niquery->arg, ARES_SUCCESS, niquery->timeouts, ipbuf,
-                        service);
-      free(niquery);
+      niquery->callback(niquery->arg, ARES_SUCCESS, niquery->timeouts, ipbuf, service);
       return;
     }
   niquery->callback(niquery->arg, status, niquery->timeouts, NULL, NULL);
@@ -311,12 +301,10 @@ static char *lookup_service(unsigned short port, int flags,
           sep = &se;
           memset(tmpbuf, 0, sizeof(tmpbuf));
 #if GETSERVBYPORT_R_ARGS == 6
-          if (getservbyport_r(port, proto, &se, (void *)tmpbuf,
-                              sizeof(tmpbuf), &sep) != 0)
+          if (getservbyport_r(port, proto, &se, (void *)tmpbuf, sizeof(tmpbuf), &sep) != 0)
             sep = NULL;
 #elif GETSERVBYPORT_R_ARGS == 5
-          sep = getservbyport_r(port, proto, &se, (void *)tmpbuf,
-                                sizeof(tmpbuf));
+          sep = getservbyport_r(port, proto, &se, (void *)tmpbuf, sizeof(tmpbuf));
 #elif GETSERVBYPORT_R_ARGS == 4
           if (getservbyport_r(port, proto, &se, (void *)tmpbuf) != 0)
             sep = NULL;
@@ -358,12 +346,11 @@ static void append_scopeid(struct sockaddr_in6 *addr6, unsigned int flags,
 #ifdef HAVE_IF_INDEXTONAME
   int is_ll, is_mcll;
 #endif
-  static const char fmt_u[] = "%u";
-  static const char fmt_lu[] = "%lu";
+  char fmt_u[] = "%u";
+  char fmt_lu[] = "%lu";
   char tmpbuf[IF_NAMESIZE + 2];
   size_t bufl;
-  const char *fmt = (sizeof(addr6->sin6_scope_id) > sizeof(unsigned int))?
-    fmt_lu:fmt_u;
+  char *fmt = (sizeof(addr6->sin6_scope_id) > sizeof(unsigned int))?fmt_lu:fmt_u;
 
   tmpbuf[0] = '%';
 
@@ -410,8 +397,8 @@ static char *ares_striendstr(const char *s1, const char *s2)
   c2 = s2;
   while (c2 < s2+s2_len)
     {
-      lo1 = TOLOWER(*c1);
-      lo2 = TOLOWER(*c2);
+      lo1 = tolower(*c1);
+      lo2 = tolower(*c2);
       if (lo1 != lo2)
         return NULL;
       else

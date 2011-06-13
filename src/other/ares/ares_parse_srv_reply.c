@@ -1,3 +1,4 @@
+/* $Id$ */
 
 /* Copyright 1998 by the Massachusetts Institute of Technology.
  * Copyright (C) 2009 by Jakub Hrozek <jhrozek@redhat.com>

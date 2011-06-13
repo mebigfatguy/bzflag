@@ -1,6 +1,7 @@
 #ifndef __ARES_INET_NTOP_H
 #define __ARES_INET_NTOP_H
 
+/* $Id$ */
 
 /* Copyright (C) 2005 by Dominick Meglio
  *

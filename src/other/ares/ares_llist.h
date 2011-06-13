@@ -1,6 +1,7 @@
 #ifndef __ARES_LLIST_H
 #define __ARES_LLIST_H
 
+/* $Id$ */
 
 /* Copyright 1998 by the Massachusetts Institute of Technology.
  *

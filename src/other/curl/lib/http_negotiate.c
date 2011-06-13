@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2009, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -167,7 +167,7 @@ int Curl_input_negotiate(struct connectdata *conn, bool proxy,
   }
 
   if(neg_ctx->context && neg_ctx->status == GSS_S_COMPLETE) {
-    /* We finished successfully our part of authentication, but server
+    /* We finished succesfully our part of authentication, but server
      * rejected it (since we're again here). Exit with an error since we
      * can't invent anything better */
     Curl_cleanup_negotiate(conn->data);
@@ -277,7 +277,6 @@ CURLcode Curl_output_negotiate(struct connectdata *conn, bool proxy)
     &conn->data->state.negotiate;
   char *encoded = NULL;
   size_t len;
-  char *userp;
 
 #ifdef HAVE_SPNEGO /* Handle SPNEGO */
   if(checkprefix("Negotiate", neg_ctx->protocol)) {
@@ -306,15 +305,9 @@ CURLcode Curl_output_negotiate(struct connectdata *conn, bool proxy)
       infof(conn->data, "Make SPNEGO Initial Token failed\n");
     }
     else {
-      free(responseToken);
-      responseToken = NULL;
       free(neg_ctx->output_token.value);
+      responseToken = NULL;
       neg_ctx->output_token.value = malloc(spnegoTokenLength);
-      if(neg_ctx->output_token.value == NULL) {
-        free(spnegoToken);
-        spnegoToken = NULL;
-        return CURLE_OUT_OF_MEMORY;
-      }
       memcpy(neg_ctx->output_token.value, spnegoToken,spnegoTokenLength);
       neg_ctx->output_token.length = spnegoTokenLength;
       free(spnegoToken);
@@ -331,16 +324,12 @@ CURLcode Curl_output_negotiate(struct connectdata *conn, bool proxy)
   if(len == 0)
     return CURLE_OUT_OF_MEMORY;
 
-  userp = aprintf("%sAuthorization: %s %s\r\n", proxy ? "Proxy-" : "",
-                  neg_ctx->protocol, encoded);
-
-  if(proxy)
-    conn->allocptr.proxyuserpwd = userp;
-  else
-    conn->allocptr.userpwd = userp;
+  conn->allocptr.userpwd =
+    aprintf("%sAuthorization: %s %s\r\n", proxy ? "Proxy-" : "",
+            neg_ctx->protocol, encoded);
   free(encoded);
   Curl_cleanup_negotiate (conn->data);
-  return (userp == NULL) ? CURLE_OUT_OF_MEMORY : CURLE_OK;
+  return (conn->allocptr.userpwd == NULL) ? CURLE_OUT_OF_MEMORY : CURLE_OK;
 }
 
 static void cleanup(struct negotiatedata *neg_ctx)

@@ -2,6 +2,7 @@
 # c-ares Makefile for djgpp/gcc/Watt-32.
 #   By Gisle Vanem <gvanem@broadpark.no> 2004.
 #
+# $Id$
 
 
 TOPDIR = ..
@@ -44,7 +45,7 @@ all: $(OBJ_DIR) ares_config.h libcares.a ahost.exe adig.exe acountry.exe
 libcares.a: $(OBJECTS)
 	ar rs $@ $?
 
-ares_config.h: config-dos.h
+ares_config.h: config.dos
 	$(COPY) $^ $@
 
 ahost.exe: ahost.c $(OBJ_DIR)/ares_getopt.o $(OBJ_HACK)

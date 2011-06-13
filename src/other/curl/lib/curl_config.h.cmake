@@ -58,7 +58,10 @@
 /* to enable hidden symbols */
 #cmakedefine CURL_HIDDEN_SYMBOLS ${CURL_HIDDEN_SYMBOLS}
 
-/* Use Windows LDAP implementation */
+/* W$ LDAP with non-W$ compiler */
+#cmakedefine CURL_LDAP_HYBRID ${CURL_LDAP_HYBRID}
+
+/* Use W$ LDAP implementation */
 #cmakedefine CURL_LDAP_WIN ${CURL_LDAP_WIN}
 
 /* when not building a shared library */
@@ -885,9 +888,6 @@
 
 /* if GnuTLS is enabled */
 #cmakedefine USE_GNUTLS ${USE_GNUTLS}
-
-/* if PolarSSL is enabled */
-#cmakedefine USE_POLARSSL ${USE_POLARSSL}
 
 /* if libSSH2 is in use */
 #cmakedefine USE_LIBSSH2 ${USE_LIBSSH2}

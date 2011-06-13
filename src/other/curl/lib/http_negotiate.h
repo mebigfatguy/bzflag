@@ -7,7 +7,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -22,7 +22,7 @@
  *
  ***************************************************************************/
 
-#ifdef USE_HTTP_NEGOTIATE
+#ifdef HAVE_GSSAPI
 
 /* this is for Negotiate header input */
 int Curl_input_negotiate(struct connectdata *conn, bool proxy,
@@ -33,10 +33,6 @@ CURLcode Curl_output_negotiate(struct connectdata *conn, bool proxy);
 
 void Curl_cleanup_negotiate(struct SessionHandle *data);
 
-#ifdef USE_WINDOWS_SSPI
-#define GSS_ERROR(status) (status & 0x80000000)
-#endif
-
-#endif /* USE_HTTP_NEGOTIATE */
+#endif /* HAVE_GSSAPI */
 
 #endif /* HEADER_CURL_HTTP_NEGOTIATE_H */

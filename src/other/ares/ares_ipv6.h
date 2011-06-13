@@ -1,3 +1,4 @@
+/* $Id$ */
 
 /* Copyright (C) 2005 by Dominick Meglio
  *
@@ -70,9 +71,5 @@ struct addrinfo
 #define IF_NAMESIZE 256
 #endif
 #endif
-
-/* Defined in ares_net_pton.c for no particular reason. */
-extern const struct ares_in6_addr ares_in6addr_any; /* :: */
-
 
 #endif /* ARES_IPV6_H */

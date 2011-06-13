@@ -1,6 +1,7 @@
 #ifndef __ARES_BITNCMP_H
 #define __ARES_BITNCMP_H
 
+/* $Id$ */
 
 /* Copyright (C) 2005 by Dominick Meglio
  *

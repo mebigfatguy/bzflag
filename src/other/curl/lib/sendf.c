@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -43,7 +43,6 @@
 #include "ssh.h"
 #include "multiif.h"
 #include "rtsp.h"
-#include "non-ascii.h"
 
 #define _MPRINTF_REPLACE /* use the internal *printf() functions */
 #include <curl/mprintf.h>
@@ -59,7 +58,7 @@
 #include <string.h>
 #include "curl_memory.h"
 #include "strerror.h"
-
+#include "easyif.h" /* for the Curl_convert_from_network prototype */
 /* The last #include file should be: */
 #include "memdebug.h"
 
@@ -235,53 +234,14 @@ CURLcode Curl_sendf(curl_socket_t sockfd, struct connectdata *conn,
   return res;
 }
 
-/*
- * Curl_write() is an internal write function that sends data to the
- * server. Works with plain sockets, SCP, SSL or kerberos.
- *
- * If the write would block (CURLE_AGAIN), we return CURLE_OK and
- * (*written == 0). Otherwise we return regular CURLcode value.
- */
-CURLcode Curl_write(struct connectdata *conn,
-                    curl_socket_t sockfd,
-                    const void *mem,
-                    size_t len,
-                    ssize_t *written)
-{
-  ssize_t bytes_written;
-  CURLcode curlcode = CURLE_OK;
-  int num = (sockfd == conn->sock[SECONDARYSOCKET]);
-
-  bytes_written = conn->send[num](conn, num, mem, len, &curlcode);
-
-  *written = bytes_written;
-  if(bytes_written >= 0)
-    /* we completely ignore the curlcode value when subzero is not returned */
-    return CURLE_OK;
-
-  /* handle CURLE_AGAIN or a send failure */
-  switch(curlcode) {
-  case CURLE_AGAIN:
-    *written = 0;
-    return CURLE_OK;
-
-  case CURLE_OK:
-    /* general send failure */
-    return CURLE_SEND_ERROR;
-
-  default:
-    /* we got a specific curlcode, forward it */
-    return (CURLcode)curlcode;
-  }
-}
-
-ssize_t Curl_send_plain(struct connectdata *conn, int num,
-                        const void *mem, size_t len, CURLcode *code)
+static ssize_t send_plain(struct connectdata *conn,
+                          int num,
+                          const void *mem,
+                          size_t len)
 {
   curl_socket_t sockfd = conn->sock[num];
   ssize_t bytes_written = swrite(sockfd, mem, len);
 
-  *code = CURLE_OK;
   if(-1 == bytes_written) {
     int err = SOCKERRNO;
 
@@ -295,18 +255,63 @@ ssize_t Curl_send_plain(struct connectdata *conn, int num,
          treat both error codes the same here */
       (EWOULDBLOCK == err) || (EAGAIN == err) || (EINTR == err)
 #endif
-      ) {
+      )
       /* this is just a case of EWOULDBLOCK */
       bytes_written=0;
-      *code = CURLE_AGAIN;
-    } else {
+    else
       failf(conn->data, "Send failure: %s",
             Curl_strerror(conn, err));
-      conn->data->state.os_errno = err;
-      *code = CURLE_SEND_ERROR;
-    }
   }
   return bytes_written;
+}
+
+/*
+ * Curl_write() is an internal write function that sends data to the
+ * server. Works with plain sockets, SCP, SSL or kerberos.
+ *
+ * If the write would block (EWOULDBLOCK), we return CURLE_OK and
+ * (*written == 0). Otherwise we return regular CURLcode value.
+ */
+CURLcode Curl_write(struct connectdata *conn,
+                    curl_socket_t sockfd,
+                    const void *mem,
+                    size_t len,
+                    ssize_t *written)
+{
+  ssize_t bytes_written;
+  int curlcode = CURLE_OK;
+  int num = (sockfd == conn->sock[SECONDARYSOCKET]);
+
+  if(conn->ssl[num].state == ssl_connection_complete)
+    bytes_written = Curl_ssl_send(conn, num, mem, len, &curlcode);
+  else if(Curl_ssh_enabled(conn, PROT_SCP))
+    bytes_written = Curl_scp_send(conn, num, mem, len);
+  else if(Curl_ssh_enabled(conn, PROT_SFTP))
+    bytes_written = Curl_sftp_send(conn, num, mem, len);
+  else if(conn->sec_complete)
+    bytes_written = Curl_sec_send(conn, num, mem, len);
+  else
+    bytes_written = send_plain(conn, num, mem, len);
+
+  *written = bytes_written;
+  if(-1 != bytes_written)
+    /* we completely ignore the curlcode value when -1 is not returned */
+    return CURLE_OK;
+
+  /* handle EWOULDBLOCK or a send failure */
+  switch(curlcode) {
+  case /* EWOULDBLOCK */ -1:
+    *written = /* EWOULDBLOCK */ 0;
+    return CURLE_OK;
+
+  case CURLE_OK:
+    /* general send failure */
+    return CURLE_SEND_ERROR;
+
+  default:
+    /* we got a specific curlcode, forward it */
+    return (CURLcode)curlcode;
+  }
 }
 
 /*
@@ -324,44 +329,12 @@ CURLcode Curl_write_plain(struct connectdata *conn,
   CURLcode retcode;
   int num = (sockfd == conn->sock[SECONDARYSOCKET]);
 
-  bytes_written = Curl_send_plain(conn, num, mem, len, &retcode);
+  bytes_written = send_plain(conn, num, mem, len);
 
   *written = bytes_written;
+  retcode = (-1 != bytes_written)?CURLE_OK:CURLE_SEND_ERROR;
 
   return retcode;
-}
-
-ssize_t Curl_recv_plain(struct connectdata *conn, int num, char *buf,
-                        size_t len, CURLcode *code)
-{
-  curl_socket_t sockfd = conn->sock[num];
-  ssize_t nread = sread(sockfd, buf, len);
-
-  *code = CURLE_OK;
-  if(-1 == nread) {
-    int err = SOCKERRNO;
-
-    if(
-#ifdef WSAEWOULDBLOCK
-      /* This is how Windows does it */
-      (WSAEWOULDBLOCK == err)
-#else
-      /* errno may be EWOULDBLOCK or on some systems EAGAIN when it returned
-         due to its inability to send off data without blocking. We therefor
-         treat both error codes the same here */
-      (EWOULDBLOCK == err) || (EAGAIN == err) || (EINTR == err)
-#endif
-      ) {
-      /* this is just a case of EWOULDBLOCK */
-      *code = CURLE_AGAIN;
-    } else {
-      failf(conn->data, "Recv failure: %s",
-            Curl_strerror(conn, err));
-      conn->data->state.os_errno = err;
-      *code = CURLE_RECV_ERROR;
-    }
-  }
-  return nread;
 }
 
 static CURLcode pausewrite(struct SessionHandle *data,
@@ -442,13 +415,15 @@ CURLcode Curl_client_write(struct connectdata *conn,
   }
 
   if(type & CLIENTWRITE_BODY) {
-    if((conn->handler->protocol&CURLPROTO_FTP) &&
-       conn->proto.ftpc.transfertype == 'A') {
+    if((conn->protocol&PROT_FTP) && conn->proto.ftpc.transfertype == 'A') {
+#ifdef CURL_DOES_CONVERSIONS
       /* convert from the network encoding */
-      size_t rc = Curl_convert_from_network(data, ptr, len);
+      size_t rc;
+      rc = Curl_convert_from_network(data, ptr, len);
       /* Curl_convert_from_network calls failf if unsuccessful */
-      if(rc)
+      if(rc != CURLE_OK)
         return rc;
+#endif /* CURL_DOES_CONVERSIONS */
 
 #ifdef CURL_DO_LINEEND_CONV
       /* convert end-of-line markers */
@@ -501,7 +476,7 @@ CURLcode Curl_client_write(struct connectdata *conn,
   return CURLE_OK;
 }
 
-CURLcode Curl_read_plain(curl_socket_t sockfd,
+int Curl_read_plain(curl_socket_t sockfd,
                          char *buf,
                          size_t bytesfromsocket,
                          ssize_t *n)
@@ -515,7 +490,7 @@ CURLcode Curl_read_plain(curl_socket_t sockfd,
 #else
     if((EWOULDBLOCK == err) || (EAGAIN == err) || (EINTR == err))
 #endif
-      return CURLE_AGAIN;
+      return -1;
     else
       return CURLE_RECV_ERROR;
   }
@@ -529,15 +504,15 @@ CURLcode Curl_read_plain(curl_socket_t sockfd,
  * Internal read-from-socket function. This is meant to deal with plain
  * sockets, SSL sockets and kerberos sockets.
  *
- * Returns a regular CURLcode value.
+ * If the read would block (EWOULDBLOCK) we return -1. Otherwise we return
+ * a regular CURLcode value.
  */
-CURLcode Curl_read(struct connectdata *conn, /* connection data */
+int Curl_read(struct connectdata *conn, /* connection data */
               curl_socket_t sockfd,     /* read from this socket */
               char *buf,                /* store read data here */
               size_t sizerequested,     /* max amount to read */
               ssize_t *n)               /* amount bytes read */
 {
-  CURLcode curlcode = CURLE_RECV_ERROR;
   ssize_t nread = 0;
   size_t bytesfromsocket = 0;
   char *buffertofill = NULL;
@@ -577,17 +552,50 @@ CURLcode Curl_read(struct connectdata *conn, /* connection data */
     buffertofill = buf;
   }
 
-  nread = conn->recv[num](conn, num, buffertofill, bytesfromsocket, &curlcode);
-  if(nread < 0)
-    return curlcode;
+  if(conn->ssl[num].state == ssl_connection_complete) {
+    int curlcode = CURLE_RECV_ERROR;
+    nread = Curl_ssl_recv(conn, num, buffertofill, bytesfromsocket, &curlcode);
 
-  if(pipelining) {
-    memcpy(buf, conn->master_buffer, nread);
-    conn->buf_len = nread;
-    conn->read_pos = nread;
+    if(nread == -1)
+      return curlcode;
   }
+  else if(Curl_ssh_enabled(conn, (PROT_SCP|PROT_SFTP))) {
+    if(conn->protocol & PROT_SCP)
+      nread = Curl_scp_recv(conn, num, buffertofill, bytesfromsocket);
+    else if(conn->protocol & PROT_SFTP)
+      nread = Curl_sftp_recv(conn, num, buffertofill, bytesfromsocket);
+#ifdef LIBSSH2CHANNEL_EAGAIN
+    if(nread == LIBSSH2CHANNEL_EAGAIN)
+      /* EWOULDBLOCK */
+      return -1;
+#endif
+    if(nread < 0)
+      /* since it is negative and not EAGAIN, it was a protocol-layer error */
+      return CURLE_RECV_ERROR;
+  }
+  else {
+    if(conn->sec_complete)
+      nread = Curl_sec_read(conn, sockfd, buffertofill,
+                            bytesfromsocket);
+    /* TODO: Need to handle EAGAIN here somehow, similar to how it
+     * is done in Curl_read_plain, either right here or in Curl_sec_read
+     * itself. */
+    else {
+      int ret = Curl_read_plain(sockfd, buffertofill, bytesfromsocket,
+                                     &nread);
+      if(ret)
+        return ret;
+    }
+  }
+  if(nread >= 0) {
+    if(pipelining) {
+      memcpy(buf, conn->master_buffer, nread);
+      conn->buf_len = nread;
+      conn->read_pos = nread;
+    }
 
-  *n += nread;
+    *n += nread;
+  }
 
   return CURLE_OK;
 }
@@ -621,7 +629,7 @@ static int showit(struct SessionHandle *data, curl_infotype type,
       size_t i;
       for(i = 0; i < size-4; i++) {
         if(memcmp(&buf[i], "\x0d\x0a\x0d\x0a", 4) == 0) {
-          /* convert everything through this CRLFCRLF but no further */
+          /* convert everthing through this CRLFCRLF but no further */
           conv_size = i + 4;
           break;
         }

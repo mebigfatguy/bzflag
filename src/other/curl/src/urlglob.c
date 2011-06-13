@@ -5,7 +5,7 @@
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2010, Daniel Stenberg, <daniel@haxx.se>, et al.
+ * Copyright (C) 1998 - 2009, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
  * This software is licensed as described in the file COPYING, which
  * you should have received as part of this distribution. The terms
@@ -75,6 +75,8 @@ static GlobCode glob_set(URLGlob *glob, char *pattern,
   ++glob->size;
 
   while (!done) {
+    bool skip;
+
     switch (*pattern) {
     case '\0':                  /* URL ended while set was still open */
       snprintf(glob->errormsg, sizeof(glob->errormsg),
@@ -107,7 +109,7 @@ static GlobCode glob_set(URLGlob *glob, char *pattern,
 
         /* always check for a literal (may be "") between patterns */
         if(GLOB_ERROR == glob_word(glob, ++pattern, ++pos, &wordamount))
-          return GLOB_ERROR;
+          wordamount=1;
         *amount = pat->content.Set.size * wordamount;
 
         done = TRUE;
@@ -125,7 +127,24 @@ static GlobCode glob_set(URLGlob *glob, char *pattern,
       return GLOB_ERROR;
 
     case '\\':                          /* escaped character, skip '\' */
-      if(pattern[1]) {
+      switch(pattern[1]) {
+      case '[':
+      case ']':
+      case '{':
+      case '}':
+      case ',':
+        skip = TRUE;
+        break;
+      default:
+        skip = FALSE;
+        break;
+      }
+      if(skip) {
+        if (*(buf+1) == '\0') {           /* but no escaping of '\0'! */
+          snprintf(glob->errormsg, sizeof(glob->errormsg),
+                   "illegal pattern at pos %zu\n", pos);
+          return GLOB_ERROR;
+        }
         ++pattern;
         ++pos;
       }
@@ -262,11 +281,8 @@ static GlobCode glob_word(URLGlob *glob, char *pattern,
   *amount = 1; /* default is one single string */
 
   while (*pattern != '\0' && *pattern != '{' && *pattern != '[') {
-    if (*pattern == '}' || *pattern == ']') {
-      snprintf(glob->errormsg, sizeof(glob->errormsg),
-               "unmatched close brace/bracket at pos %zu\n", pos);
+    if (*pattern == '}' || *pattern == ']')
       return GLOB_ERROR;
-    }
 
     /* only allow \ to escape known "special letters" */
     if (*pattern == '\\' &&
@@ -276,6 +292,8 @@ static GlobCode glob_word(URLGlob *glob, char *pattern,
       /* escape character, skip '\' */
       ++pattern;
       ++pos;
+      if (*pattern == '\0')             /* but no escaping of '\0'! */
+        return GLOB_ERROR;
     }
     *buf++ = *pattern++;                /* copy character to literal */
     ++pos;
@@ -338,7 +356,7 @@ int glob_url(URLGlob** glob, char* url, int *urlnum, FILE *error)
   else {
     if(error && glob_expand->errormsg[0]) {
       /* send error description to the error-stream */
-      fprintf(error, "curl: (%d) [globbing] %s",
+      fprintf(error, "curl: (%d) [globbing] %s\n",
               CURLE_URL_MALFORMAT, glob_expand->errormsg);
     }
     /* it failed, we cleanup */

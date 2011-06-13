@@ -1,3 +1,4 @@
+/* $Id$ */
 
 /* Copyright 1998 by the Massachusetts Institute of Technology.
  *
@@ -287,7 +288,7 @@ static int single_domain(ares_channel channel, const char *name, char **s)
                 }
               free(line);
               fclose(fp);
-              if (status != ARES_SUCCESS && status != ARES_EOF)
+              if (status != ARES_SUCCESS)
                 return status;
             }
           else

@@ -2,7 +2,7 @@
  *
  * Copyright (c) 1995, 1996, 1997, 1998, 1999 Kungliga Tekniska Högskolan
  * (Royal Institute of Technology, Stockholm, Sweden).
- * Copyright (c) 2004 - 2011 Daniel Stenberg
+ * Copyright (c) 2004 - 2009 Daniel Stenberg
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -76,19 +76,10 @@
 #define REMOTE_ADDR conn->ip_addr->ai_addr
 
 static int
-krb5_init(void *app_data)
-{
-  gss_ctx_id_t *context = app_data;
-  /* Make sure our context is initialized for krb5_end. */
-  *context = GSS_C_NO_CONTEXT;
-  return 0;
-}
-
-static int
 krb5_check_prot(void *app_data, int level)
 {
-  (void)app_data; /* unused */
-  if(level == PROT_CONFIDENTIAL)
+  app_data = NULL; /* prevent compiler warning */
+  if(level == prot_confidential)
     return -1;
   return 0;
 }
@@ -124,10 +115,10 @@ krb5_decode(void *app_data, void *buf, int len, int level,
 static int
 krb5_overhead(void *app_data, int level, int len)
 {
-  /* no arguments are used */
-  (void)app_data;
-  (void)level;
-  (void)len;
+  /* no arguments are used, just init them to prevent compiler warnings */
+  app_data = NULL;
+  level = 0;
+  len = 0;
   return 0;
 }
 
@@ -150,7 +141,7 @@ krb5_encode(void *app_data, const void *from, int length, int level, void **to,
   dec.value = (void*)from;
   dec.length = length;
   maj = gss_seal(&min, *context,
-                 level == PROT_PRIVATE,
+                 level == prot_private,
                  GSS_C_QOP_DEFAULT,
                  &dec, &state, &enc);
 
@@ -170,15 +161,15 @@ krb5_encode(void *app_data, const void *from, int length, int level, void **to,
 static int
 krb5_auth(void *app_data, struct connectdata *conn)
 {
-  int ret = AUTH_OK;
+  int ret;
   char *p;
-  const char *host = conn->host.name;
+  const char *host = conn->dns_entry->addr->ai_canonname;
   ssize_t nread;
   curl_socklen_t l = sizeof(conn->local_addr);
   struct SessionHandle *data = conn->data;
   CURLcode result;
   const char *service = "ftp", *srv_host = "host";
-  gss_buffer_desc input_buffer, output_buffer, _gssresp, *gssresp;
+  gss_buffer_desc gssbuf, _gssresp, *gssresp;
   OM_uint32 maj, min;
   gss_name_t gssname;
   gss_ctx_id_t *context = app_data;
@@ -214,31 +205,28 @@ krb5_auth(void *app_data, struct connectdata *conn)
         return -1;
     }
 
-    input_buffer.value = data->state.buffer;
-    input_buffer.length = snprintf(input_buffer.value, BUFSIZE, "%s@%s",
-                                   service, host);
-    maj = gss_import_name(&min, &input_buffer, GSS_C_NT_HOSTBASED_SERVICE,
-                          &gssname);
+    gssbuf.value = data->state.buffer;
+    gssbuf.length = snprintf(gssbuf.value, BUFSIZE, "%s@%s", service, host);
+    maj = gss_import_name(&min, &gssbuf, GSS_C_NT_HOSTBASED_SERVICE, &gssname);
     if(maj != GSS_S_COMPLETE) {
       gss_release_name(&min, &gssname);
       if(service == srv_host) {
-        Curl_failf(data, "Error importing service name %s", input_buffer.value);
+        Curl_failf(data, "Error importing service name %s", gssbuf.value);
         return AUTH_ERROR;
       }
       service = srv_host;
       continue;
     }
-    /* We pass NULL as |output_name_type| to avoid a leak. */
-    gss_display_name(&min, gssname, &output_buffer, NULL);
-    Curl_infof(data, "Trying against %s\n", output_buffer.value);
+    {
+      gss_OID t;
+      gss_display_name(&min, gssname, &gssbuf, &t);
+      Curl_infof(data, "Trying against %s\n", gssbuf.value);
+      gss_release_buffer(&min, &gssbuf);
+    }
     gssresp = GSS_C_NO_BUFFER;
     *context = GSS_C_NO_CONTEXT;
 
     do {
-      /* Release the buffer at each iteration to avoid leaking: the first time
-         we are releasing the memory from gss_display_name. The last item is
-         taken care by a final gss_release_buffer. */
-      gss_release_buffer(&min, &output_buffer);
       ret = AUTH_OK;
       maj = gss_init_sec_context(&min,
                                  GSS_C_NO_CREDENTIAL,
@@ -250,7 +238,7 @@ krb5_auth(void *app_data, struct connectdata *conn)
                                  &chan,
                                  gssresp,
                                  NULL,
-                                 &output_buffer,
+                                 &gssbuf,
                                  NULL,
                                  NULL);
 
@@ -259,16 +247,16 @@ krb5_auth(void *app_data, struct connectdata *conn)
         gssresp = NULL;
       }
 
-      if(GSS_ERROR(maj)) {
-        Curl_infof(data, "Error creating security context\n");
+      if(maj != GSS_S_COMPLETE && maj != GSS_S_CONTINUE_NEEDED) {
+        Curl_infof(data, "Error creating security context");
         ret = AUTH_ERROR;
         break;
       }
 
-      if(output_buffer.length != 0) {
-        if(Curl_base64_encode(data, (char *)output_buffer.value,
-                              output_buffer.length, &p) < 1) {
-          Curl_infof(data, "Out of memory base64-encoding\n");
+      if(gssbuf.length != 0) {
+        if(Curl_base64_encode(data, (char *)gssbuf.value, gssbuf.length, &p)
+           < 1) {
+          Curl_infof(data, "Out of memory base64-encoding");
           ret = AUTH_CONTINUE;
           break;
         }
@@ -299,7 +287,7 @@ krb5_auth(void *app_data, struct connectdata *conn)
           _gssresp.length = Curl_base64_decode(p + 5, (unsigned char **)
                                                &_gssresp.value);
           if(_gssresp.length < 1) {
-            Curl_failf(data, "Out of memory base64-encoding\n");
+            Curl_failf(data, "Out of memory base64-encoding");
             ret = AUTH_CONTINUE;
             break;
           }
@@ -310,7 +298,6 @@ krb5_auth(void *app_data, struct connectdata *conn)
     } while(maj == GSS_S_CONTINUE_NEEDED);
 
     gss_release_name(&min, &gssname);
-    gss_release_buffer(&min, &output_buffer);
 
     if(gssresp)
       free(_gssresp.value);
@@ -320,25 +307,14 @@ krb5_auth(void *app_data, struct connectdata *conn)
 
     service = srv_host;
   }
-  return ret;
-}
-
-static void krb5_end(void *app_data)
-{
-    OM_uint32 maj, min;
-    gss_ctx_id_t *context = app_data;
-    if (*context != GSS_C_NO_CONTEXT) {
-      maj = gss_delete_sec_context(&min, context, GSS_C_NO_BUFFER);
-      DEBUGASSERT(maj == GSS_S_COMPLETE);
-    }
 }
 
 struct Curl_sec_client_mech Curl_krb5_client_mech = {
     "GSSAPI",
     sizeof(gss_ctx_id_t),
-    krb5_init,
+    NULL, /* init */
     krb5_auth,
-    krb5_end,
+    NULL, /* end */
     krb5_check_prot,
     krb5_overhead,
     krb5_encode,

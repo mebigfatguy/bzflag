@@ -1,25 +1,12 @@
-/***************************************************************************
+/*****************************************************************************
  *                                  _   _ ____  _
  *  Project                     ___| | | |  _ \| |
  *                             / __| | | | |_) | |
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
- * This software is licensed as described in the file COPYING, which
- * you should have received as part of this distribution. The terms
- * are also available at http://curl.haxx.se/docs/copyright.html.
- *
- * You may opt to use, copy, modify, merge, publish, distribute and/or sell
- * copies of the Software, and permit persons to whom the Software is
- * furnished to do so, under the terms of the COPYING file.
- *
- * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
- * KIND, either express or implied.
- *
- ***************************************************************************/
-/* Example application source code using the multi socket interface to
+ * Example application source code using the multi socket interface to
  * download many files at once.
  *
  * This example features the same basic functionality as hiperfifo.c does,
@@ -81,6 +68,7 @@ typedef struct _GlobalInfo
   struct ev_io fifo_event;
   struct ev_timer timer_event;
   CURLM *multi;
+  int prev_running;
   int still_running;
   FILE* input;
 } GlobalInfo;
@@ -134,6 +122,7 @@ static void mcode_or_die(const char *where, CURLMcode code)
     switch ( code )
     {
     case CURLM_CALL_MULTI_PERFORM: s="CURLM_CALL_MULTI_PERFORM"; break;
+    case CURLM_OK:                 s="CURLM_OK";                 break;
     case CURLM_BAD_HANDLE:         s="CURLM_BAD_HANDLE";         break;
     case CURLM_BAD_EASY_HANDLE:    s="CURLM_BAD_EASY_HANDLE";    break;
     case CURLM_OUT_OF_MEMORY:      s="CURLM_OUT_OF_MEMORY";      break;
@@ -155,31 +144,52 @@ static void mcode_or_die(const char *where, CURLMcode code)
 
 
 /* Check for completed transfers, and remove their easy handles */
-static void check_multi_info(GlobalInfo *g)
+static void check_run_count(GlobalInfo *g)
 {
-  char *eff_url;
-  CURLMsg *msg;
-  int msgs_left;
-  ConnInfo *conn;
-  CURL *easy;
-  CURLcode res;
+  DPRINT("%s prev %i still %i\n", __PRETTY_FUNCTION__,
+         g->prev_running, g->still_running);
+  if ( g->prev_running > g->still_running )
+  {
+    char *eff_url=NULL;
+    CURLMsg *msg;
+    int msgs_left;
+    ConnInfo *conn=NULL;
+    CURL*easy;
+    CURLcode res;
 
-  fprintf(MSG_OUT, "REMAINING: %d\n", g->still_running);
-  while ((msg = curl_multi_info_read(g->multi, &msgs_left))) {
-    if (msg->msg == CURLMSG_DONE) {
-      easy = msg->easy_handle;
-      res = msg->data.result;
-      curl_easy_getinfo(easy, CURLINFO_PRIVATE, &conn);
-      curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
-      fprintf(MSG_OUT, "DONE: %s => (%d) %s\n", eff_url, res, conn->error);
-      curl_multi_remove_handle(g->multi, easy);
-      free(conn->url);
-      curl_easy_cleanup(easy);
-      free(conn);
-    }
+    fprintf(MSG_OUT, "REMAINING: %d\n", g->still_running);
+    /*
+      I am still uncertain whether it is safe to remove an easy
+      handle from inside the curl_multi_info_read loop, so here I
+      will search for completed transfers in the inner "while"
+      loop, and then remove them in the outer "do-while" loop...
+    */
+    do
+    {
+      easy=NULL;
+      while ( (msg = curl_multi_info_read(g->multi, &msgs_left)) )
+      {
+        if ( msg->msg == CURLMSG_DONE )
+        {
+          easy=msg->easy_handle;
+          res=msg->data.result;
+        }
+
+        if ( easy )
+        {
+          curl_easy_getinfo(easy, CURLINFO_PRIVATE, &conn);
+          curl_easy_getinfo(easy, CURLINFO_EFFECTIVE_URL, &eff_url);
+          fprintf(MSG_OUT, "DONE: %s => (%d) %s\n", eff_url, res, conn->error);
+          curl_multi_remove_handle(g->multi, easy);
+          free(conn->url);
+          curl_easy_cleanup(easy);
+          free(conn);
+        }
+      }
+    } while ( easy );
   }
+  g->prev_running = g->still_running;
 }
-
 
 
 /* Called by libevent when we get action on a multi socket */
@@ -191,9 +201,12 @@ static void event_cb(EV_P_ struct ev_io *w, int revents)
 
   int action = (revents&EV_READ?CURL_POLL_IN:0)|
     (revents&EV_WRITE?CURL_POLL_OUT:0);
-  rc = curl_multi_socket_action(g->multi, w->fd, action, &g->still_running);
-  mcode_or_die("event_cb: curl_multi_socket_action", rc);
-  check_multi_info(g);
+  do
+  {
+    rc = curl_multi_socket_action(g->multi, w->fd, action, &g->still_running);
+  } while ( rc == CURLM_CALL_MULTI_PERFORM );
+  mcode_or_die("event_cb: curl_multi_socket", rc);
+  check_run_count(g);
   if ( g->still_running <= 0 )
   {
     fprintf(MSG_OUT, "last transfer done, kill timeout\n");
@@ -209,9 +222,12 @@ static void timer_cb(EV_P_ struct ev_timer *w, int revents)
   GlobalInfo *g = (GlobalInfo *)w->data;
   CURLMcode rc;
 
-  rc = curl_multi_socket_action(g->multi, CURL_SOCKET_TIMEOUT, 0, &g->still_running);
-  mcode_or_die("timer_cb: curl_multi_socket_action", rc);
-  check_multi_info(g);
+  do
+  {
+    rc = curl_multi_socket_action(g->multi, CURL_SOCKET_TIMEOUT, 0, &g->still_running);
+  } while ( rc == CURLM_CALL_MULTI_PERFORM );
+  mcode_or_die("timer_cb: curl_multi_socket", rc);
+  check_run_count(g);
 }
 
 /* Clean up the SockInfo structure */
@@ -348,11 +364,11 @@ static void new_conn(char *url, GlobalInfo *g )
 
   fprintf(MSG_OUT,
           "Adding easy %p to multi %p (%s)\n", conn->easy, g->multi, url);
-  rc = curl_multi_add_handle(g->multi, conn->easy);
+  rc =curl_multi_add_handle(g->multi, conn->easy);
   mcode_or_die("new_conn: curl_multi_add_handle", rc);
 
-  /* note that the add_handle() will set a time-out to trigger very soon so
-     that the necessary socket_action() call will be called by this app */
+  mcode_or_die("new_conn: curl_multi_socket_all", rc);
+  check_run_count(g);
 }
 
 /* This gets called whenever data is received from the fifo */
@@ -380,7 +396,7 @@ static int init_fifo (GlobalInfo *g)
 {
   struct stat st;
   static const char *fifo = "hiper.fifo";
-  curl_socket_t sockfd;
+  int sockfd;
 
   fprintf(MSG_OUT, "Creating named pipe \"%s\"\n", fifo);
   if ( lstat (fifo, &st) == 0 )
@@ -432,9 +448,10 @@ int main(int argc, char **argv)
   curl_multi_setopt(g.multi, CURLMOPT_SOCKETDATA, &g);
   curl_multi_setopt(g.multi, CURLMOPT_TIMERFUNCTION, multi_timer_cb);
   curl_multi_setopt(g.multi, CURLMOPT_TIMERDATA, &g);
-
-  /* we don't call any curl_multi_socket*() function yet as we have no handles
-     added! */
+  do
+  {
+    rc = curl_multi_socket_all(g.multi, &g.still_running);
+  } while ( CURLM_CALL_MULTI_PERFORM == rc );
 
   ev_loop(g.loop, 0);
   curl_multi_cleanup(g.multi);

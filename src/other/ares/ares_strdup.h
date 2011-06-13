@@ -1,6 +1,7 @@
 #ifndef HEADER_CARES_STRDUP_H
 #define HEADER_CARES_STRDUP_H
 
+/* $Id$ */
 
 /* Copyright 1998 by the Massachusetts Institute of Technology.
  *

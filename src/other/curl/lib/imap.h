@@ -33,7 +33,6 @@ typedef enum {
                        a connect */
   IMAP_LOGIN,
   IMAP_STARTTLS,
-  IMAP_UPGRADETLS, /* asynchronously upgrade the connection to SSL/TLS (multi mode only) */
   IMAP_SELECT,
   IMAP_FETCH,
   IMAP_LOGOUT,
@@ -48,7 +47,6 @@ struct imap_conn {
   imapstate state; /* always use imap.c:state() to change state! */
   int cmdid;       /* id number/index */
   const char *idstr; /* pointer to a string for which to wait for as id */
-  bool ssldone;      /* is connect() over SSL done? only relevant in multi mode */
 };
 
 extern const struct Curl_handler Curl_handler_imap;

@@ -55,20 +55,15 @@ CURLcode Curl_client_write(struct connectdata *conn, int type, char *ptr,
                            size_t len);
 
 /* internal read-function, does plain socket only */
-CURLcode Curl_read_plain(curl_socket_t sockfd,
-                         char *buf,
-                         size_t bytesfromsocket,
-                         ssize_t *n);
-
-ssize_t Curl_recv_plain(struct connectdata *conn, int num, char *buf,
-                        size_t len, CURLcode *code);
-ssize_t Curl_send_plain(struct connectdata *conn, int num,
-                        const void *mem, size_t len, CURLcode *code);
+int Curl_read_plain(curl_socket_t sockfd,
+                    char *buf,
+                    size_t bytesfromsocket,
+                    ssize_t *n);
 
 /* internal read-function, does plain socket, SSL and krb4 */
-CURLcode Curl_read(struct connectdata *conn, curl_socket_t sockfd,
-                   char *buf, size_t buffersize,
-                   ssize_t *n);
+int Curl_read(struct connectdata *conn, curl_socket_t sockfd,
+              char *buf, size_t buffersize,
+              ssize_t *n);
 /* internal write-function, does plain socket, SSL, SCP, SFTP and krb4 */
 CURLcode Curl_write(struct connectdata *conn,
                     curl_socket_t sockfd,

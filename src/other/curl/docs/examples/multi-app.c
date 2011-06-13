@@ -1,25 +1,13 @@
-/***************************************************************************
+/*****************************************************************************
  *                                  _   _ ____  _
  *  Project                     ___| | | |  _ \| |
  *                             / __| | | | |_) | |
  *                            | (__| |_| |  _ <| |___
  *                             \___|\___/|_| \_\_____|
  *
- * Copyright (C) 1998 - 2011, Daniel Stenberg, <daniel@haxx.se>, et al.
  *
- * This software is licensed as described in the file COPYING, which
- * you should have received as part of this distribution. The terms
- * are also available at http://curl.haxx.se/docs/copyright.html.
- *
- * You may opt to use, copy, modify, merge, publish, distribute and/or sell
- * copies of the Software, and permit persons to whom the Software is
- * furnished to do so, under the terms of the COPYING file.
- *
- * This software is distributed on an "AS IS" basis, WITHOUT WARRANTY OF ANY
- * KIND, either express or implied.
- *
- ***************************************************************************/
-/* This is an example application source code using the multi interface. */
+ * This is an example application source code using the multi interface.
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -39,7 +27,7 @@
 #define HTTP_HANDLE 0   /* Index for the HTTP transfer */
 #define FTP_HANDLE 1    /* Index for the FTP transfer */
 
-int main(void)
+int main(int argc, char **argv)
 {
   CURL *handles[HANDLECOUNT];
   CURLM *multi_handle;
@@ -55,9 +43,9 @@ int main(void)
       handles[i] = curl_easy_init();
 
   /* set the options (I left out a few, you'll get the point anyway) */
-  curl_easy_setopt(handles[HTTP_HANDLE], CURLOPT_URL, "http://example.com");
+  curl_easy_setopt(handles[HTTP_HANDLE], CURLOPT_URL, "http://website.com");
 
-  curl_easy_setopt(handles[FTP_HANDLE], CURLOPT_URL, "ftp://example.com");
+  curl_easy_setopt(handles[FTP_HANDLE], CURLOPT_URL, "ftp://ftpsite.com");
   curl_easy_setopt(handles[FTP_HANDLE], CURLOPT_UPLOAD, 1L);
 
   /* init a multi stack */
@@ -68,7 +56,8 @@ int main(void)
       curl_multi_add_handle(multi_handle, handles[i]);
 
   /* we start some action by calling perform right away */
-  curl_multi_perform(multi_handle, &still_running);
+  while(CURLM_CALL_MULTI_PERFORM ==
+        curl_multi_perform(multi_handle, &still_running));
 
   while(still_running) {
     struct timeval timeout;
@@ -77,9 +66,7 @@ int main(void)
     fd_set fdread;
     fd_set fdwrite;
     fd_set fdexcep;
-    int maxfd = -1;
-
-    long curl_timeo = -1;
+    int maxfd;
 
     FD_ZERO(&fdread);
     FD_ZERO(&fdwrite);
@@ -89,23 +76,12 @@ int main(void)
     timeout.tv_sec = 1;
     timeout.tv_usec = 0;
 
-    curl_multi_timeout(multi_handle, &curl_timeo);
-    if(curl_timeo >= 0) {
-      timeout.tv_sec = curl_timeo / 1000;
-      if(timeout.tv_sec > 1)
-        timeout.tv_sec = 1;
-      else
-        timeout.tv_usec = (curl_timeo % 1000) * 1000;
-    }
-
     /* get file descriptors from the transfers */
     curl_multi_fdset(multi_handle, &fdread, &fdwrite, &fdexcep, &maxfd);
 
     /* In a real-world program you OF COURSE check the return code of the
-       function calls.  On success, the value of maxfd is guaranteed to be
-       greater or equal than -1.  We call select(maxfd + 1, ...), specially in
-       case of (maxfd == -1), we call select(0, ...), which is basically equal
-       to sleep. */
+       function calls, *and* you make sure that maxfd is bigger than -1 so
+       that the call to select() below makes sense! */
 
     rc = select(maxfd+1, &fdread, &fdwrite, &fdexcep, &timeout);
 
@@ -113,9 +89,14 @@ int main(void)
     case -1:
       /* select error */
       break;
-    case 0: /* timeout */
-    default: /* action */
-      curl_multi_perform(multi_handle, &still_running);
+    case 0:
+      /* timeout, do something else */
+      break;
+    default:
+      /* one or more of curl's file descriptors say there's data to read
+         or write */
+      while(CURLM_CALL_MULTI_PERFORM ==
+            curl_multi_perform(multi_handle, &still_running));
       break;
     }
   }
