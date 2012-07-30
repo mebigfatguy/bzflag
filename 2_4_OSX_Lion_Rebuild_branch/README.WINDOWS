@@ -1,0 +1,62 @@
+README for Windows (32- and 64-bit) platforms
+---------------------------------------------
+
+**Compilers**
+BZFlag uses Microsoft Visual C++ for its prebuilt binary
+releases and project files are provided for it. The current
+compiler used is Visual C++ 2010 (VC10). Both the full
+and express versions will build just fine.
+
+Visual Studio 6.0, 7.1, 8.0 and 9.0 support has been discontinued,
+and no projects are provided for these versions.
+
+
+It is also possible to build on Windows using MinGW/MSYS or
+Cygwin, both of which use a unix-style autotools build system;
+for details, see README.MINGW32 (for MinGW) or the main
+README (for Cygwin).
+
+The most common way to build on windows is to use Visual C++.
+The freely available VC10 EE edition is well suited to users
+who wish to compile the client for personal use. It can be found at
+http://www.microsoft.com/express/download/. Please note that the
+free versions of Visual C++ do not allow for the re-distribution
+of compiled applications, and link to runtime libraries that only
+exist on systems that have the same VC EE version. If you wish to
+distribute pre-made binary images of bzflag, then you will have to
+ether use the full (retail, or student) versions of the compiler
+or use one of the other free solutions (minGW). For more info
+on compiling with minGW please see the README.MINGW32 that was
+included in this source package. The rest of this document will
+refer to the build process using Visual C++ 10.0 (2010).
+
+**Targets**
+There are a total of 4 build targets in the VC projects.
+Release and Debug targets are configured so that they will
+"build out of the box" for the majority of users. Both targets
+are provided for both 32 and 64 bit binaries.
+
+Please note that there is no real performance advantage in having
+a 64 bit BZFlag client, the game does not use that much ram.
+
+**Required Libraries**
+
+You will need the windows DirectX SDK
+  (download at hhttp://www.microsoft.com/download/en/details.aspx?displaylang=en&id=6812)
+
+You may also need to install curses and NSIS to do a full
+distribution build.  Public Domain Curses is at
+http://sourceforge.net/projects/pdcurses/files/ .  The release notes
+file there explains which .zip file to use.
+
+**Running and Debugging**
+By default the compiler will copy the compiled executables to the root level
+of the source drive ( the same place that the data dir is at). From there
+you can simply double click the application to run it. If you wish to debug
+the program, you must set the debug executable path and working directory
+inside VC to use this executable and path.
+
+**Installer**
+If you wish to build the full release package using the fullbuild solution,
+you will need to have NSIS installed. The built installer will be placed in 
+the _bin folder for the target in the root of the source tree.
